@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>praise 2nd arbitrage-bot — Cross-Exchange Scanner</title>
+<meta name="theme-color" content="#0a0e17">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Praise Arb">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <span class="logo">⇄</span>
+    <div>
+      <h1>praise 2nd arbitrage-bot</h1>
+      <span class="subtitle">cross-exchange scanner · sim + live</span>
+    </div>
+  </div>
+  <div class="top-stats">
+    <div class="stat"><label>Balance</label><span id="stat-balance">$10,000.00</span></div>
+    <div class="stat"><label>Realized P&amp;L</label><span id="stat-pnl">$0.00</span></div>
+    <div class="stat"><label>ROI</label><span id="stat-roi">0.00%</span></div>
+    <div class="stat"><label>Trades</label><span id="stat-trades">0</span></div>
+    <div class="stat"><label>Win rate</label><span id="stat-winrate">—</span></div>
+  </div>
+  <div class="mode-toggle" id="mode-toggle" title="SIM: simulated market · LIVE: real exchange prices">
+    <button id="mode-sim" class="mode-btn active">SIM</button>
+    <button id="mode-live" class="mode-btn">LIVE</button>
+  </div>
+  <span id="paper-badge" class="paper-badge" hidden>PAPER TRADING</span>
+  <div class="controls">
+    <button id="btn-install" class="btn" hidden>⬇ Install app</button>
+    <button id="btn-toggle" class="btn primary">▶ Start bot</button>
+    <button id="btn-reset" class="btn">Reset</button>
+  </div>
+</header>
+
+<div id="live-strip" class="live-strip" hidden></div>
+
+<main class="grid">
+  <section class="panel board-panel">
+    <div class="panel-head">
+      <h2>Live prices</h2>
+      <span class="hint"><i class="chip chip-buy">buy</i> cheapest &nbsp;·&nbsp; <i class="chip chip-sell">sell</i> richest</span>
+    </div>
+    <div id="board" class="board"></div>
+  </section>
+
+  <section class="panel opp-panel">
+    <div class="panel-head">
+      <h2>Arbitrage opportunities</h2>
+      <span class="hint" id="opp-hint">net spread after fees</span>
+    </div>
+    <div id="opps" class="opps"></div>
+  </section>
+
+  <section class="panel log-panel">
+    <div class="panel-head">
+      <h2>Trade log</h2>
+      <span class="hint" id="log-count">0 trades</span>
+    </div>
+    <div id="log" class="log"></div>
+  </section>
+
+  <section class="panel settings-panel">
+    <div class="panel-head"><h2>Bot settings</h2></div>
+    <div class="settings">
+      <label class="setting">
+        <span>Min net spread <b id="val-minspread">0.35%</b></span>
+        <input type="range" id="set-minspread" min="0.05" max="2" step="0.05" value="0.35">
+      </label>
+      <label class="setting">
+        <span>Max position <b id="val-maxpos">$2,500</b></span>
+        <input type="range" id="set-maxpos" min="100" max="10000" step="100" value="2500">
+      </label>
+      <label class="setting">
+        <span>Tick speed <b id="val-speed">1.0s</b></span>
+        <input type="range" id="set-speed" min="200" max="2000" step="100" value="1000">
+      </label>
+      <label class="setting check">
+        <input type="checkbox" id="set-autotrade" checked>
+        <span>Auto-trade when threshold hit</span>
+      </label>
+    </div>
+    <div class="stats-extra">
+      <div class="mini"><label>Fees paid</label><span id="stat-fees">$0.00</span></div>
+      <div class="mini"><label>Best trade</label><span id="stat-best">—</span></div>
+      <div class="mini"><label>Worst trade</label><span id="stat-worst">—</span></div>
+      <div class="mini"><label>Opps seen</label><span id="stat-oppcount">0</span></div>
+    </div>
+  </section>
+
+  <section class="panel real-panel">
+    <div class="panel-head">
+      <h2>Real trading</h2>
+      <span class="hint" id="rt-hint">needs LIVE mode + both exchanges connected</span>
+    </div>
+    <div class="rt">
+      <div class="rt-warn">⚠ Places <b>real orders with your own funds</b>. Use <b>trade-only</b> API keys
+        (no withdrawals). Binance defaults to the free <b>testnet</b> — start there, then go live.</div>
+
+      <div class="rt-ex">
+        <div class="rt-title">Binance <span id="rt-status-bin" class="rt-status">not connected</span></div>
+        <div class="rt-row">
+          <input type="text" id="rt-bin-key" placeholder="API key" autocomplete="off" spellcheck="false">
+          <input type="password" id="rt-bin-secret" placeholder="API secret" autocomplete="off">
+        </div>
+        <label class="setting check rt-check">
+          <input type="checkbox" id="rt-bin-testnet" checked>
+          <span>Use testnet (testnet.binance.vision)</span>
+        </label>
+        <button class="btn small" id="rt-test-bin">Test connection</button>
+      </div>
+
+      <div class="rt-ex">
+        <div class="rt-title">KuCoin <span id="rt-status-kc" class="rt-status">not connected</span></div>
+        <div class="rt-row">
+          <input type="text" id="rt-kc-key" placeholder="API key" autocomplete="off" spellcheck="false">
+          <input type="password" id="rt-kc-secret" placeholder="API secret" autocomplete="off">
+          <input type="password" id="rt-kc-pass" placeholder="Passphrase" autocomplete="off">
+        </div>
+        <button class="btn small" id="rt-test-kc">Test connection</button>
+      </div>
+
+      <label class="setting check rt-arm">
+        <input type="checkbox" id="rt-enable">
+        <span>Arm real trading (buy leg + sell leg as market orders)</span>
+      </label>
+      <div id="rt-balance" class="rt-balance">Binance: —     KuCoin: —</div>
+      <div class="rt-note">Real trades fire only when: LIVE mode · both exchanges connected ·
+        USDT on the buy exchange · the base coin on the sell exchange. No profit is guaranteed.</div>
+    </div>
+  </section>
+</main>
+
+<footer class="foot">
+  SIM: simulated market · LIVE: real public prices from Binance, Kraken, Coinbase &amp; KuCoin.
+  With real trading armed, the bot places real market orders on Binance &amp; KuCoin with your own funds.
+</footer>
+
+<script src="js/config.js"></script>
+<script src="js/market.js"></script>
+<script src="js/livefeed.js"></script>
+<script src="js/exchange-api.js"></script>
+<script src="js/arbitrage.js"></script>
+<script src="js/portfolio.js"></script>
+<script src="js/bot.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
