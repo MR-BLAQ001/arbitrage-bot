@@ -69,34 +69,77 @@
     if (opp) bot.manualTrade(opp);
   });
 
+  // flash‑loan controls (section is currently commented out in index.html)
+  const flashExecBtn = document.getElementById("flash-exec");
+  const flashStartBtn = document.getElementById("flash-start");
+  const flashStopBtn = document.getElementById("flash-stop");
+  if (flashExecBtn && flashStartBtn && flashStopBtn) {
+    let autoFlashTimer = null;
+
+    flashExecBtn.addEventListener("click", async () => {
+      const asset = document.getElementById("flash-asset").value.trim();
+      const amt = parseInt(document.getElementById("flash-amount").value.trim(), 10);
+      if (!asset || !amt) {
+        alert("Enter asset address and amount");
+        return;
+      }
+      const res = await FlashLoan.request(asset, amt);
+      alert(res ? "Flash loan executed" : "Flash loan failed");
+    });
+
+    const startAutoFlash = () => {
+      if (autoFlashTimer) clearInterval(autoFlashTimer);
+      const asset = document.getElementById("flash-asset").value.trim();
+      const amt = parseInt(document.getElementById("flash-amount").value.trim(), 10);
+      if (!asset || !amt) {
+        alert("Enter asset address and amount");
+        return;
+      }
+      autoFlashTimer = setInterval(async () => {
+        await FlashLoan.request(asset, amt);
+      }, 5000); // adjust interval as needed
+      flashStartBtn.disabled = true;
+      flashStopBtn.disabled = false;
+    };
+    const stopAutoFlash = () => {
+      if (autoFlashTimer) clearInterval(autoFlashTimer);
+      autoFlashTimer = null;
+      flashStartBtn.disabled = false;
+      flashStopBtn.disabled = true;
+    };
+    flashStartBtn.addEventListener("click", startAutoFlash);
+    flashStopBtn.addEventListener("click", stopAutoFlash);
+  }
+
   /* ---------- go ---------- */
   UI.buildBoard(CONFIG);
   UI.buildOpps(CONFIG);
   UI.buildLiveStrip(CONFIG);
+  UI.buildFlashPanel();
   UI.buildReal();
 
-// Service worker & install button wiring
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('sw.js').then(r => {
-    console.log('SW registered', r);
-  }).catch(err => console.error('SW register error', err));
-}
+  // Service worker & install button wiring
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js').then(r => {
+      console.log('SW registered', r);
+    }).catch(err => console.error('SW register error', err));
+  }
 
-let deferredPrompt = null;
-window.addEventListener('beforeinstallprompt', e => {
-  e.preventDefault();
-  deferredPrompt = e;
-  UI.els.btnInstall.hidden = false;
-});
+  let deferredPrompt = null;
+  window.addEventListener('beforeinstallprompt', e => {
+    e.preventDefault();
+    deferredPrompt = e;
+    UI.els.btnInstall.hidden = false;
+  });
 
-UI.els.btnInstall.addEventListener('click', async () => {
-  if (!deferredPrompt) return;
-  deferredPrompt.prompt();
-  const { outcome } = await deferredPrompt.userChoice;
-  console.log('install outcome:', outcome);
-  deferredPrompt = null;
-  UI.els.btnInstall.hidden = true;
-});
+  UI.els.btnInstall.addEventListener('click', async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    console.log('install outcome:', outcome);
+    deferredPrompt = null;
+    UI.els.btnInstall.hidden = true;
+  });
   UI.setMode("sim");
   loop();          // first render immediately
   startTimer();

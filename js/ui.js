@@ -311,6 +311,11 @@ const UI = (() => {
   els.modeSim.addEventListener("click", () => onMode("sim"));
   els.modeLive.addEventListener("click", () => onMode("live"));
 
+  function buildFlashPanel() {
+    // nothing dynamic needed – panel already in DOM
+    els.flashPanel = document.querySelector(".flash-panel");
+    if (els.flashPanel) els.flashPanel.hidden = false;
+  }
   function renderAll(market, portfolio, opps, cfg) {
     renderBoard(market, boardMarks(opps));
     renderOpps(opps, minSpread());
@@ -335,6 +340,7 @@ const UI = (() => {
     buildOpps,
     buildLiveStrip,
     buildReal,
+    buildFlashPanel,
     renderAll,
     setManualHandler,
     setModeHandler,

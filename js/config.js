@@ -35,6 +35,15 @@ const CONFIG = {
     { id: "XRP/USDT", base: 0.6240, vol: 0.0011 },
   ],
 
+  /* Flash‑loan receiver configuration (LIVE mode). */
+  flashLoanReceiver: {
+    address: "0x…", // <-- replace with deployed contract address
+    abi: [
+      // minimal ABI for the initiateFlashLoan function
+      "function initiateFlashLoan(address asset, uint256 amount) external",
+    ],
+  },
+
   /* Random price dislocations that create arbitrage windows (SIM only). */
   divergence: {
     chance: 0.055,      // per exchange/symbol per tick

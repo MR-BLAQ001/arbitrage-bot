@@ -2,7 +2,7 @@
  * App shell is cached on install; same-origin GETs are cached
  * (stale-while-revalidate). Exchange API calls are never cached.
  */
-const CACHE = "praise-arb-v1";
+const CACHE = "praise-arb-v2";
 const SHELL = [
   "./",
   "index.html",
@@ -15,6 +15,8 @@ const SHELL = [
   "js/market.js",
   "js/livefeed.js",
   "js/exchange-api.js",
+  "js/flashloan.js",
+  "js/ethers.min.js",
   "js/arbitrage.js",
   "js/portfolio.js",
   "js/bot.js",

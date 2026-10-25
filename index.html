@@ -96,6 +96,17 @@
     </div>
   </section>
 
+  <section class="panel flash-panel">
+    <div class="panel-head"><h2>Flash Loan</h2></div>
+    <div class="flash-controls">
+      <label>Asset address:<input type="text" id="flash-asset" placeholder="0x…" /></label>
+      <label>Amount (in wei):<input type="number" id="flash-amount" value="0" /></label>
+      <button id="flash-exec" class="btn">Execute Flash‑Loan</button>
+      <button id="flash-start" class="btn small">Start Auto Flash</button>
+      <button id="flash-stop" class="btn small" disabled>Stop Auto Flash</button>
+    </div>
+  </section>
+
   <section class="panel real-panel">
     <div class="panel-head">
       <h2>Real trading</h2>
@@ -148,10 +159,12 @@
 <script src="js/market.js"></script>
 <script src="js/livefeed.js"></script>
 <script src="js/exchange-api.js"></script>
+<script src="js/flashloan.js"></script>
 <script src="js/arbitrage.js"></script>
 <script src="js/portfolio.js"></script>
 <script src="js/bot.js"></script>
 <script src="js/ui.js"></script>
+<script src="js/ethers.min.js"></script>
 <script src="js/main.js"></script>
 </body>
 </html>
