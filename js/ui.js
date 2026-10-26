@@ -24,11 +24,29 @@ const UI = (() => {
     modeLive: $("mode-live"),
     liveStrip: $("live-strip"),
     paperBadge: $("paper-badge"),
+    livePriceBadge: $("live-price-badge"),
     rtStatusBin: $("rt-status-bin"),
     rtStatusKc: $("rt-status-kc"),
     rtEnable: $("rt-enable"),
     rtBalance: $("rt-balance"),
     rtHint: $("rt-hint"),
+    perfModeBadge: $("perf-mode-badge"),
+    perfProfit: $("perf-profit"),
+    perfRoi: $("perf-roi"),
+    perfNetworth: $("perf-networth"),
+    perfPeak: $("perf-peak"),
+    perfTrades: $("perf-trades"),
+    perfWinrate: $("perf-winrate"),
+    perfChart: $("perf-chart"),
+    logDemo: $("log-demo"),
+    logLive: $("log-live"),
+    logCountDemo: $("log-count-demo"),
+    logCountLive: $("log-count-live"),
+    wdAvailable: $("wd-available"),
+    wdTotalWithdrawn: $("wd-total-withdrawn"),
+    wdNetworth: $("wd-networth"),
+    wdList: $("wd-list"),
+    searchInput: $("search-pairs"),
   };
 
   const fmtMoney = v =>
@@ -39,195 +57,256 @@ const UI = (() => {
     : p >= 10 ? p.toFixed(2)
     : p.toFixed(4);
 
-  let boardBuilt = false;
-  let oppRows = {};   // symbol -> row element
-  let liveItems = {}; // exId -> row element
   let lastTradeId = 0;
-  let currentMode = "sim";
+  let onManual = () => {};
+  function setManualHandler(fn) { onManual = fn; }
 
-  /* ---------- mode toggle + live feed strip ---------- */
   let onMode = () => {};
   function setModeHandler(fn) { onMode = fn; }
 
+  // wire SIM / LIVE toggle buttons (with fallback if els not yet populated)
+  const wireMode = () => {
+    if (els.modeSim) els.modeSim.onclick = () => onMode("sim");
+    if (els.modeLive) els.modeLive.onclick = () => onMode("live");
+  };
+  wireMode();
+  setTimeout(wireMode, 0);
+
+  // expose current search term (synced from main.js via window.__getSearchTerm)
+  function getSearch() {
+    if (typeof window.__getSearchTerm === "function") return window.__getSearchTerm();
+    return "";
+  }
+
   function setMode(m) {
-    currentMode = m;
     els.modeSim.classList.toggle("active", m === "sim");
     els.modeLive.classList.toggle("active", m === "live");
-    els.liveStrip.hidden = (m !== "live");
-    els.paperBadge.hidden = (m !== "live");
+    // Both demo and live now use real market prices from the exchanges
+    els.livePriceBadge.hidden = false;
+    els.liveStrip.hidden = false; // show exchange connection status in both modes
+    els.paperBadge.hidden = (m === "live"); // PAPER badge only in demo mode
   }
 
   function buildLiveStrip(cfg) {
     let html = "";
     for (const e of cfg.exchanges) {
-      html += `<div class="live-ex" data-ex="${e.id}"><span class="dot"></span><b>${e.name}</b><span class="live-ts">waiting…</span></div>`;
+      html += `<div class="live-ex" data-ex="${e.id}"><span class="dot"></span><b>${e.name}</b><span class="live-ts">—</span></div>`;
     }
     els.liveStrip.innerHTML = html;
     els.liveStrip.querySelectorAll(".live-ex").forEach(row => {
-      liveItems[row.dataset.ex] = row;
+      row.querySelector(".dot").classList.add("ok");
+      row.querySelector(".live-ts").textContent = "live";
     });
   }
 
   function renderLive() {
-    if (currentMode !== "live" || typeof LiveFeed === "undefined") return;
-    for (const [exId, row] of Object.entries(liveItems)) {
-      const st = LiveFeed.status[exId];
-      if (!st) continue;
-      row.classList.toggle("ok", st.ok);
-      row.classList.toggle("err", !st.ok);
-      const ts = row.querySelector(".live-ts");
-      if (st.ts) {
-        ts.textContent = new Date(st.ts).toLocaleTimeString("en-GB");
-        if (st.error) ts.textContent += " · " + st.error;
-      } else {
-        ts.textContent = st.error ? st.error : "waiting…";
-      }
+    const st = LiveFeed.status;
+    for (const exId of Object.keys(st)) {
+      const row = els.liveStrip.querySelector(`.live-ex[data-ex="${exId}"]`);
+      if (!row) continue;
+      const s = st[exId];
+      row.classList.toggle("ok", s.ok);
+      row.classList.toggle("err", !s.ok && s.ts);
+      row.querySelector(".live-ts").textContent = s.ok ? new Date(s.ts).toLocaleTimeString("en-GB") : (s.error || "—");
     }
   }
 
-  /* ---------- price board ---------- */
   function buildBoard(cfg) {
-    let html = "<table><thead><tr><th>Pair</th>";
-    for (const e of cfg.exchanges) html += `<th>${e.name}<br><span style="opacity:.7">${(e.fee * 100).toFixed(2)}%</span></th>`;
-    html += "</tr></thead><tbody>";
-    for (const s of cfg.symbols) {
-      html += `<tr><td class="sym">${s.id}</td>`;
-      for (const e of cfg.exchanges) {
-        html += `<td><span class="cell" data-sym="${s.id}" data-ex="${e.id}"></span></td>`;
-      }
-      html += "</tr>";
-    }
-    html += "</tbody></table>";
-    els.board.innerHTML = html;
-    boardBuilt = true;
+    const ths = cfg.exchanges.map(e => `<th>${e.name}</th>`).join("");
+    const rows = cfg.symbols.map(s => `
+      <tr data-symbol="${s.id}">
+        <td class="symbol">${s.id}</td>
+        ${cfg.exchanges.map(e => `<td class="cell" data-ex="${e.id}"><span class="price">—</span></td>`).join("")}
+      </tr>`).join("");
+    els.board.innerHTML = `<table><thead><tr><th>Pair</th>${ths}</tr></thead><tbody>${rows}</tbody></table>`;
   }
 
   function renderBoard(market, marks) {
-    if (!boardBuilt) return;
-    const cells = els.board.querySelectorAll(".cell");
-    cells.forEach(c => {
-      const cell = market.cells[c.dataset.sym][c.dataset.ex];
-      const mark = marks[c.dataset.sym];
-      const up = cell.price >= cell.prev;
-      const d = cell.prev ? ((cell.price - cell.prev) / cell.prev) * 100 : 0;
-
-      let cls = "cell";
-      if (mark) {
-        if (c.dataset.ex === mark.buyExId) cls += " is-buy";
-        if (c.dataset.ex === mark.sellExId) cls += " is-sell";
+    for (const sym of Object.keys(market.cells)) {
+      const row = els.board.querySelector(`tr[data-symbol="${sym}"]`);
+      if (!row) continue;
+      row.style.display = "";
+      for (const exId of Object.keys(market.cells[sym])) {
+        const cell = row.querySelector(`td.cell[data-ex="${exId}"]`);
+        const c = market.cells[sym][exId];
+        cell.querySelector(".price").textContent = fmtPrice(c.price);
+        cell.classList.toggle("up", c.price > c.prev);
+        cell.classList.toggle("down", c.price < c.prev);
       }
-      cls += up ? " flash-up" : " flash-down";
-
-      c.className = cls;
-      c.innerHTML = `${fmtPrice(cell.price)}<span class="delta ${up ? "up" : "down"}">${up ? "▲" : "▼"}${Math.abs(d).toFixed(3)}%</span>`;
-    });
+    }
+    // marks for best/worst
+    for (const m of marks) {
+      const row = els.board.querySelector(`tr[data-symbol="${m.symbol}"]`);
+      if (!row) continue;
+      const buyCell = row.querySelector(`td.cell[data-ex="${m.buyExId}"]`);
+      const sellCell = row.querySelector(`td.cell[data-ex="${m.sellExId}"]`);
+      if (buyCell) buyCell.classList.add("best");
+      if (sellCell) sellCell.classList.add("worst");
+    }
   }
 
-  /* ---------- opportunities ---------- */
   function buildOpps(cfg) {
-    let html = "";
-    for (const s of cfg.symbols) {
-      html += `
-      <div class="opp" data-sym="${s.id}">
-        <div class="opp-top">
-          <span class="opp-sym">${s.id}</span>
-          <span class="opp-route"></span>
-          <span class="opp-net"></span>
-        </div>
+    els.opps.innerHTML = cfg.symbols.map(s => `
+      <div class="opp" data-symbol="${s.id}">
+        <div class="opp-head"><b>${s.id}</b><span class="opp-gross">—</span><span class="opp-net">—</span></div>
         <div class="opp-bar"><div class="opp-fill"></div><div class="opp-threshold"></div></div>
-        <div class="opp-foot">
-          <span class="gross"></span>
-          <button class="opp-go">Trade now</button>
-        </div>
-      </div>`;
-    }
-    els.opps.innerHTML = html;
-    els.opps.querySelectorAll(".opp").forEach(row => {
-      oppRows[row.dataset.sym] = row;
-      row.querySelector(".opp-go").addEventListener("click", () => onManual(row.dataset.sym));
+        <div class="opp-actions"><button class="btn small trade-btn">Trade now</button></div>
+      </div>`).join("");
+    els.opps.querySelectorAll(".trade-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const oppEl = btn.closest(".opp");
+        onManual(oppEl.dataset.symbol, false);
+      });
     });
   }
 
   function renderOpps(opps, minSpreadPct) {
-    els.oppHint.textContent =
-      currentMode === "live"
-        ? "real prices · net spread after fees"
-        : `threshold ${minSpreadPct.toFixed(2)}% net · click “Trade now” to execute manually`;
-    const scale = Math.max(1.5, minSpreadPct * 2.2);
+    const maxScale = Math.max(1.0, ...opps.map(o => o.netPct));
     for (const o of opps) {
-      const row = oppRows[o.symbol];
+      const row = els.opps.querySelector(`.opp[data-symbol="${o.symbol}"]`);
       if (!row) continue;
-      const hot = o.netPct >= minSpreadPct;
-      row.classList.toggle("hot", hot);
-      row.querySelector(".opp-route").textContent =
-        `buy ${o.buyEx.name} → sell ${o.sellEx.name}`;
-      const net = row.querySelector(".opp-net");
-      net.textContent = fmtPct(o.netPct);
-      net.className = "opp-net " + (o.netPct >= 0 ? "pos" : "neg");
+      row.style.display = "";
+      row.querySelector(".opp-gross").textContent = fmtPct(o.grossPct);
+      row.querySelector(".opp-net").textContent = fmtPct(o.netPct);
+      row.querySelector(".opp-net").classList.toggle("hot", o.netPct >= minSpreadPct);
       const fill = row.querySelector(".opp-fill");
-      fill.style.width = Math.max(2, Math.min(100, (o.netPct / scale) * 100)) + "%";
-      fill.classList.toggle("below", o.netPct < minSpreadPct);
-      row.querySelector(".opp-threshold").style.left = Math.min(100, (minSpreadPct / scale) * 100) + "%";
-      row.querySelector(".gross").textContent =
-        `gross ${fmtPct(o.grossPct)} · fees ${((o.buyEx.fee + o.sellEx.fee) * 100).toFixed(2)}%`;
+      fill.style.width = (o.netPct / maxScale * 100) + "%";
+      fill.classList.toggle("hot", o.netPct >= minSpreadPct);
+      row.querySelector(".opp-threshold").style.left = (minSpreadPct / maxScale * 100) + "%";
     }
-    // keep list sorted by net spread (DOM order)
-    const sorted = opps.map(o => oppRows[o.symbol]);
-    sorted.forEach(r => els.opps.appendChild(r));
+    const count = opps.length;
+    els.oppHint.textContent = `net spread after fees · threshold ${minSpreadPct.toFixed(2)}% · ${count} match${count === 1 ? "" : "es"}`;
   }
 
-  /* ---------- trade log ---------- */
-  const emptyLogHtml =
-    `<div class="log-empty">No trades yet — start the bot or hit “Trade now” on a hot opportunity.</div>`;
+  const emptyLogHtml = '<div class="empty-log">No trades yet</div>';
 
   function tradeRow(t) {
-    const cls = t.pnl >= 0 ? "pos" : "neg";
-    const failed = t.real && t.realStatus && t.realStatus.startsWith("FAILED");
-    const realTag = t.real
-      ? `<span class="real-tag ${failed ? "fail" : "ok"}">${t.realStatus || "real"}</span>`
-      : "";
+    const realTag = t.real ? ` <span class="chip ${t.realStatus && t.realStatus.includes("FAILED") ? "chip-sell" : "chip-buy"}">${t.realStatus ? "REAL" : "real"}</span>` : "";
+    const cls = t.pnl > 0 ? "pos" : t.pnl < 0 ? "neg" : "";
     return `
       <div class="trade">
-        <span class="trade-time">${t.time.toLocaleTimeString("en-GB")}</span>
+        <span class="trade-time">${new Date(t.time).toLocaleTimeString("en-GB")}</span>
         <span class="trade-main"><b>${t.symbol}</b> <span class="trade-route">${t.buyEx} → ${t.sellEx} · ${fmtMoney(t.size)} · ${t.mode}${realTag}</span></span>
         <span class="trade-pnl ${cls}">${t.pnl >= 0 ? "+" : ""}${t.pnl.toFixed(2)}<small>fees ${t.fees.toFixed(2)}</small></span>
       </div>`;
   }
 
-  function renderLog(portfolio) {
-    if (portfolio.trades.some(t => t.real)) {
-      // real trades update their fill status asynchronously — re-render fully
-      let html = "";
-      for (const t of portfolio.trades.slice(0, 60)) html += tradeRow(t);
-      els.log.innerHTML = html || emptyLogHtml;
-      lastTradeId = Math.max(lastTradeId, ...portfolio.trades.map(t => t.id));
+  // separate lastTradeId trackers for demo and live
+  let lastDemoTradeId = 0;
+  let lastLiveTradeId = 0;
+
+  function renderLogDemo(accounts) {
+    const state = accounts.getDemo();
+    const trades = state.trades;
+    if (lastDemoTradeId === 0) {
+      els.logDemo.innerHTML = trades.length ? trades.map(tradeRow).reverse().join("") : emptyLogHtml;
+      lastDemoTradeId = trades.length ? trades[trades.length - 1].id : 0;
     } else {
-      const fresh = portfolio.trades.filter(t => t.id > lastTradeId);
+      const fresh = trades.filter(t => t.id > lastDemoTradeId);
       if (fresh.length) {
-        for (const t of fresh) els.log.insertAdjacentHTML("afterbegin", tradeRow(t));
-        lastTradeId = Math.max(lastTradeId, ...fresh.map(t => t.id));
-        while (els.log.children.length > 60) els.log.lastChild.remove();
+        for (const t of fresh) els.logDemo.insertAdjacentHTML("afterbegin", tradeRow(t));
+        lastDemoTradeId = Math.max(lastDemoTradeId, ...fresh.map(t => t.id));
+        while (els.logDemo.children.length > 60) els.logDemo.lastChild.remove();
       }
-      if (!portfolio.trades.length) els.log.innerHTML = emptyLogHtml;
     }
-    els.logCount.textContent = portfolio.trades.length + " trades";
+    els.logCountDemo.textContent = trades.length + " trades";
   }
 
-  /* ---------- stats ---------- */
-  function renderStats(portfolio) {
-    els.balance.textContent = fmtMoney(portfolio.balance);
-    els.pnl.textContent = (portfolio.realized >= 0 ? "+" : "-") + "$" + Math.abs(portfolio.realized).toFixed(2);
-    els.pnl.className = portfolio.realized > 0 ? "pos" : portfolio.realized < 0 ? "neg" : "";
-    els.roi.textContent = fmtPct(portfolio.roiPct);
-    els.roi.className = portfolio.roiPct > 0 ? "pos" : portfolio.roiPct < 0 ? "neg" : "";
-    els.trades.textContent = String(portfolio.trades.length);
-    els.winrate.textContent = portfolio.winRate === null ? "—" : portfolio.winRate.toFixed(0) + "%";
-    els.fees.textContent = fmtMoney(portfolio.fees);
-    els.best.textContent = portfolio.best === null ? "—" : "+" + portfolio.best.toFixed(2);
-    els.best.className = "pos";
-    els.worst.textContent = portfolio.worst === null ? "—" : portfolio.worst.toFixed(2);
-    els.worst.className = "neg";
-    els.oppcount.textContent = String(portfolio.oppSeen);
+  function renderLogLive(accounts) {
+    const state = accounts.getLive();
+    const trades = state.trades;
+    if (lastLiveTradeId === 0) {
+      els.logLive.innerHTML = trades.length ? trades.map(tradeRow).reverse().join("") : emptyLogHtml;
+      lastLiveTradeId = trades.length ? trades[trades.length - 1].id : 0;
+    } else {
+      const fresh = trades.filter(t => t.id > lastLiveTradeId);
+      if (fresh.length) {
+        for (const t of fresh) els.logLive.insertAdjacentHTML("afterbegin", tradeRow(t));
+        lastLiveTradeId = Math.max(lastLiveTradeId, ...fresh.map(t => t.id));
+        while (els.logLive.children.length > 60) els.logLive.lastChild.remove();
+      }
+    }
+    els.logCountLive.textContent = trades.length + " trades";
+  }
+
+  function renderStats(accounts, mode) {
+    const state = mode === "sim" ? accounts.getDemo() : accounts.getLive();
+    const bal = mode === "sim" ? state.balance : (state.balance !== null ? state.balance : NaN);
+    if (els.balance) els.balance.textContent = isFinite(bal) ? fmtMoney(bal) : "—";
+    if (els.pnl) {
+      els.pnl.textContent = (state.realized >= 0 ? "+" : "-") + "$" + Math.abs(state.realized).toFixed(2);
+      els.pnl.className = state.realized > 0 ? "pos" : state.realized < 0 ? "neg" : "";
+    }
+    const roi = state.starting ? (state.realized / state.starting) * 100 : 0;
+    if (els.roi) {
+      els.roi.textContent = fmtPct(roi);
+      els.roi.className = roi > 0 ? "pos" : roi < 0 ? "neg" : "";
+    }
+    const trades = state.trades;
+    if (els.trades) els.trades.textContent = String(trades.length);
+    const wr = state.tradesTotal ? (state.winsTotal / state.tradesTotal) * 100 : null;
+    if (els.winrate) els.winrate.textContent = wr === null ? "—" : wr.toFixed(0) + "%";
+    if (els.fees) els.fees.textContent = fmtMoney(state.fees);
+    const best = trades.length ? Math.max(...trades.map(t => t.pnl)) : null;
+    const worst = trades.length ? Math.min(...trades.map(t => t.pnl)) : null;
+    if (els.best) { els.best.textContent = best === null ? "—" : "+" + best.toFixed(2); els.best.className = "pos"; }
+    if (els.worst) { els.worst.textContent = worst === null ? "—" : worst.toFixed(2); els.worst.className = "neg"; }
+    if (els.oppcount) els.oppcount.textContent = String(state.oppSeen || 0);
+  }
+
+  function renderPerformance(accounts, mode) {
+    const state = mode === "sim" ? accounts.getDemo() : accounts.getLive();
+    // update the mode badge
+    const badge = els.perfModeBadge;
+    if (badge) {
+      badge.textContent = mode === "sim" ? "DEMO" : "LIVE";
+      badge.className = mode === "sim" ? "chip chip-buy" : "chip chip-sell";
+    }
+    // stats
+    if (els.perfProfit) els.perfProfit.textContent = (state.realized >= 0 ? "+" : "-") + fmtMoney(Math.abs(state.realized));
+    if (els.perfRoi) els.perfRoi.textContent = fmtPct(state.starting ? (state.realized / state.starting) * 100 : 0);
+    if (els.perfNetworth) els.perfNetworth.textContent = fmtMoney(state.balance + state.totalWithdrawn);
+    if (els.perfPeak) els.perfPeak.textContent = state.peakBalance ? fmtMoney(state.peakBalance) : "—";
+    if (els.perfTrades) els.perfTrades.textContent = String(state.tradesTotal);
+    if (els.perfWinrate) els.perfWinrate.textContent = state.tradesTotal ? ((state.winsTotal / state.tradesTotal) * 100).toFixed(1) + "%" : "—";
+    // equity chart
+    if (els.perfChart) drawEquity(els.perfChart, state.equity, state.starting);
+  }
+
+  function renderWithdrawals(accounts) {
+    // ONLY live account data — withdrawals are from real trades only
+    const live = accounts.getLive ? accounts.getLive() : { balance: null, totalWithdrawn: 0, withdrawals: [] };
+    const bal = live.balance !== null && live.balance !== undefined ? live.balance : 0;
+    if (els.wdAvailable) els.wdAvailable.textContent = fmtMoney(bal);
+    if (els.wdTotalWithdrawn) els.wdTotalWithdrawn.textContent = fmtMoney(live.totalWithdrawn || 0);
+    if (els.wdNetworth) els.wdNetworth.textContent = fmtMoney(bal + (live.totalWithdrawn || 0));
+    // withdrawal history
+    if (els.wdList) {
+      const html = (live.withdrawals || []).map(w => `
+        <div class="wd-item"><span>${w.time ? new Date(w.time).toLocaleString() : ""}</span><b>${fmtMoney(w.amount)}</b><span class="${w.status}">${w.status}</span></div>
+      `).join("");
+      els.wdList.innerHTML = html || "<div class='empty'>No withdrawals yet</div>";
+    }
+  }
+
+  function drawEquity(canvas, data, starting) {
+    const ctx = canvas.getContext("2d");
+    const w = canvas.width = canvas.clientWidth * (window.devicePixelRatio || 1);
+    const h = canvas.height = 200 * (window.devicePixelRatio || 1);
+    ctx.scale(window.devicePixelRatio || 1, window.devicePixelRatio || 1);
+    ctx.clearRect(0, 0, w, h);
+    if (!data || data.length < 2) return;
+    const min = Math.min(...data);
+    const max = Math.max(...data);
+    const range = max - min || 1;
+    ctx.beginPath();
+    ctx.moveTo(0, h - (data[0] - min) / range * h);
+    for (let i = 1; i < data.length; i++) {
+      ctx.lineTo(i / (data.length - 1) * w, h - (data[i] - min) / range * h);
+    }
+    ctx.strokeStyle = data[data.length - 1] >= starting ? "#2fd48a" : "#f4636e";
+    ctx.lineWidth = 2;
+    ctx.stroke();
   }
 
   /* ---------- real trading ---------- */
@@ -270,69 +349,60 @@ const UI = (() => {
     wireTest("binance", "rt-bin-key", "rt-bin-secret", null, "rt-test-bin", "rt-status-bin");
     wireTest("kucoin", "rt-kc-key", "rt-kc-secret", "rt-kc-pass", "rt-test-kc", "rt-status-kc");
 
-    els.rtEnable.addEventListener("change", e => {
-      ExchangeAPI.setEnabled(e.target.checked);
+    els.rtEnable.addEventListener("change", async () => {
+      const s = ExchangeAPI.state;
+      const canArm = els.modeLive.classList.contains("active") && s.connected.binance && s.connected.kucoin;
+      if (!canArm) {
+        els.rtEnable.checked = false;
+        els.rtHint.textContent = "needs LIVE mode + both exchanges connected";
+        return;
+      }
+      const on = ExchangeAPI.setEnabled(els.rtEnable.checked);
+      els.rtEnable.checked = on;
+      els.rtHint.textContent = on ? "REAL TRADING ARMED · live market orders will fire" : "Real trading disarmed";
     });
   }
 
   function renderReal() {
     const s = ExchangeAPI.state;
-    const canArm = currentMode === "live" && s.connected.binance && s.connected.kucoin;
+    const connectedCount = [s.connected.binance, s.connected.kucoin].filter(Boolean).length;
+    const canArm = els.modeLive.classList.contains("active") && connectedCount === 2;
     els.rtEnable.disabled = !canArm && !s.enabled;
-    if (!canArm && s.enabled) els.rtEnable.checked = false;
     els.rtHint.textContent = s.enabled
-      ? "ARMED — real orders will be placed"
-      : canArm
-        ? "ready — arm to place real orders"
-        : "needs LIVE mode + both exchanges connected";
-
-    els.paperBadge.textContent = s.enabled
-      ? (currentMode === "live" ? "REAL TRADING" : "REAL · STANDBY")
-      : "PAPER TRADING";
-    els.paperBadge.classList.toggle("real", s.enabled);
-    els.paperBadge.hidden = !(s.enabled || currentMode === "live");
-
-    const bal = exId => {
-      const b = s.balances[exId] || {};
-      const usdt = (b.USDT || 0).toFixed(2);
-      const coins = Object.keys(b).filter(a => a !== "USDT")
-        .map(a => a + " " + b[a].toFixed(4)).join(" · ");
-      return "USDT " + usdt + (coins ? " · " + coins : "");
-    };
-    els.rtBalance.textContent =
-      "Binance: " + (s.connected.binance ? bal("binance") : "—") +
-      "     KuCoin: " + (s.connected.kucoin ? bal("kucoin") : "—");
+      ? "REAL TRADING ARMED · live market orders will fire"
+      : connectedCount < 2
+        ? "needs LIVE mode + both exchanges connected"
+        : "Arm to enable real trading";
+    const b = s.balances;
+    const binUSDT = (b.binance || {}).USDT || 0;
+    const kcUSDT = (b.kucoin || {}).USDT || 0;
+    els.rtBalance.textContent = `Binance USDT: ${binUSDT.toFixed(2)} · KuCoin USDT: ${kcUSDT.toFixed(2)}`;
   }
 
-  /* ---------- wiring ---------- */
-  let onManual = () => {};
-  function setManualHandler(fn) { onManual = fn; }
-
-  els.modeSim.addEventListener("click", () => onMode("sim"));
-  els.modeLive.addEventListener("click", () => onMode("live"));
-
   function buildFlashPanel() {
-    // nothing dynamic needed – panel already in DOM
     els.flashPanel = document.querySelector(".flash-panel");
     if (els.flashPanel) els.flashPanel.hidden = false;
   }
-  function renderAll(market, portfolio, opps, cfg) {
+
+  function renderAll(market, accounts, mode, opps, cfg) {
+    const minSpread = parseFloat(document.getElementById("set-minspread").value);
     renderBoard(market, boardMarks(opps));
-    renderOpps(opps, minSpread());
-    renderLog(portfolio);
-    renderStats(portfolio);
+    renderOpps(opps, minSpread);
+    renderLogDemo(accounts);
+    renderLogLive(accounts);
+    renderStats(accounts, mode);
+    renderPerformance(accounts, mode);
+    renderWithdrawals(accounts);
     renderLive();
     renderReal();
   }
 
-  function minSpread() {
-    return parseFloat(document.getElementById("set-minspread").value);
-  }
-
-  function resetLog() {
-    lastTradeId = 0;
-    els.log.innerHTML = "";
-    els.logCount.textContent = "0 trades";
+  function boardMarks(opps) {
+    return opps.filter(o => o.executable).map(o => ({
+      symbol: o.symbol,
+      buyExId: o.buyEx.id,
+      sellExId: o.sellEx.id,
+    }));
   }
 
   return {
@@ -344,8 +414,17 @@ const UI = (() => {
     renderAll,
     setManualHandler,
     setModeHandler,
+    getSearch,
     setMode,
-    resetLog,
+    wireModeToggle: wireMode,
+    resetLog: () => {
+      lastDemoTradeId = 0;
+      lastLiveTradeId = 0;
+      if (els.logDemo) els.logDemo.innerHTML = emptyLogHtml;
+      if (els.logLive) els.logLive.innerHTML = emptyLogHtml;
+      if (els.logCountDemo) els.logCountDemo.textContent = "0 trades";
+      if (els.logCountLive) els.logCountLive.textContent = "0 trades";
+    },
     els,
   };
 })();

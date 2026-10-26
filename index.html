@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>praise 2nd arbitrage-bot — Cross-Exchange Scanner</title>
 <meta name="theme-color" content="#0a0e17">
 <meta name="mobile-web-app-capable" content="yes">
@@ -34,6 +34,7 @@
     <button id="mode-live" class="mode-btn">LIVE</button>
   </div>
   <span id="paper-badge" class="paper-badge" hidden>PAPER TRADING</span>
+  <span id="live-price-badge" class="price-badge" hidden>📡 LIVE PRICES</span>
   <div class="controls">
     <button id="btn-install" class="btn" hidden>⬇ Install app</button>
     <button id="btn-toggle" class="btn primary">▶ Start bot</button>
@@ -43,7 +44,10 @@
 
 <div id="live-strip" class="live-strip" hidden></div>
 
-<main class="grid">
+<main class="views">
+
+  <div class="view" id="view-scanner">
+    <div class="view-grid">
   <section class="panel board-panel">
     <div class="panel-head">
       <h2>Live prices</h2>
@@ -59,15 +63,72 @@
     </div>
     <div id="opps" class="opps"></div>
   </section>
+    </div>
+  </div>
 
+  <div class="view" id="view-dashboard">
+    <section class="panel perf-panel">
+      <div class="panel-head"><h2>Performance <span id="perf-mode-badge" class="chip chip-buy">DEMO</span></h2><span class="hint">profits · trade activity</span></div>
+      <div class="perf-grid">
+        <div class="perf-main">
+          <div class="perf-stats">
+            <div class="mini"><label>Total profit</label><span id="perf-profit">$0.00</span></div>
+            <div class="mini"><label>ROI</label><span id="perf-roi">0.00%</span></div>
+            <div class="mini"><label>Peak balance</label><span id="perf-peak">$0.00</span></div>
+            <div class="mini"><label>Total trades</label><span id="perf-trades">0</span></div>
+            <div class="mini"><label>Win rate</label><span id="perf-winrate">—</span></div>
+          </div>
+          <canvas id="perf-chart" class="perf-chart"></canvas>
+          <div class="perf-chart-cap">Equity curve — balance over time (dashed line = starting balance)</div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div class="view" id="view-history">
   <section class="panel log-panel">
     <div class="panel-head">
-      <h2>Trade log</h2>
-      <span class="hint" id="log-count">0 trades</span>
+      <h2>Demo trades</h2>
+      <span class="hint" id="log-count-demo">0 trades</span>
     </div>
-    <div id="log" class="log"></div>
+    <div id="log-demo" class="log"></div>
   </section>
+  <section class="panel log-panel" style="margin-top:16px">
+    <div class="panel-head">
+      <h2>Live trades</h2>
+      <span class="hint" id="log-count-live">0 trades</span>
+    </div>
+    <div id="log-live" class="log"></div>
+  </section>
+  </div>
 
+  <div class="view" id="view-withdrawals">
+    <section class="panel wd-panel">
+      <div class="panel-head"><h2>Withdrawals</h2><span class="hint">live withdrawals only — from real trade profits</span></div>
+      <div class="perf-grid">
+        <div class="perf-main">
+          <div class="perf-stats">
+            <div class="mini"><label>Available (live)</label><span id="wd-available">$0.00</span></div>
+            <div class="mini"><label>Total withdrawn</label><span id="wd-total-withdrawn">$0.00</span></div>
+            <div class="mini"><label>Net worth (live)</label><span id="wd-networth">$0.00</span></div>
+          </div>
+          <div class="wd-box">
+            <div class="wd-row">
+              <input type="number" id="wd-amount" min="0" step="0.01" placeholder="Amount">
+              <button id="wd-btn" class="btn small">Withdraw</button>
+            </div>
+            <div id="wd-msg" class="wd-msg"></div>
+          </div>
+        </div>
+        <div class="perf-side">
+          <div class="perf-sub">Withdrawal history</div>
+          <div id="wd-list" class="wd-list">No withdrawals yet.</div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div class="view" id="view-settings">
   <section class="panel settings-panel">
     <div class="panel-head"><h2>Bot settings</h2></div>
     <div class="settings">
@@ -88,25 +149,37 @@
         <span>Auto-trade when threshold hit</span>
       </label>
     </div>
-    <div class="stats-extra">
-      <div class="mini"><label>Fees paid</label><span id="stat-fees">$0.00</span></div>
-      <div class="mini"><label>Best trade</label><span id="stat-best">—</span></div>
-      <div class="mini"><label>Worst trade</label><span id="stat-worst">—</span></div>
-      <div class="mini"><label>Opps seen</label><span id="stat-oppcount">0</span></div>
+      <div class="stats-extra">
+        <div class="mini"><label>Fees paid</label><span id="stat-fees">$0.00</span></div>
+        <div class="mini"><label>Best trade</label><span id="stat-best">—</span></div>
+        <div class="mini"><label>Worst trade</label><span id="stat-worst">—</span></div>
+        <div class="mini"><label>Opps seen</label><span id="stat-oppcount">0</span></div>
+      </div>
     </div>
   </section>
+  </div>
 
+  <div class="view" id="view-flash">
   <section class="panel flash-panel">
-    <div class="panel-head"><h2>Flash Loan</h2></div>
+    <div class="panel-head"><h2>Flash Loan</h2><span class="hint">real Aave v3 DEX arbitrage</span></div>
     <div class="flash-controls">
-      <label>Asset address:<input type="text" id="flash-asset" placeholder="0x…" /></label>
-      <label>Amount (in wei):<input type="number" id="flash-amount" value="0" /></label>
-      <button id="flash-exec" class="btn">Execute Flash‑Loan</button>
-      <button id="flash-start" class="btn small">Start Auto Flash</button>
-      <button id="flash-stop" class="btn small" disabled>Stop Auto Flash</button>
+      <label>Receiver contract:<input type="text" id="flash-receiver" placeholder="0x…" /></label>
+      <label>Router A (buy leg):<input type="text" id="flash-router-a" placeholder="0x…" /></label>
+      <label>Router B (sell leg):<input type="text" id="flash-router-b" placeholder="0x…" /></label>
+      <label>Asset (borrow):<input type="text" id="flash-asset" placeholder="0x…" /></label>
+      <label>Intermediate token:<input type="text" id="flash-intermediate" placeholder="0x…" /></label>
+      <label>Amount (token units):<input type="number" id="flash-amount" value="1" min="0" step="0.1" /></label>
+      <label>Slippage (bps, 50 = 0.5%):<input type="number" id="flash-slippage" value="50" min="1" max="500" /></label>
+      <button id="flash-setup" class="btn small">Connect Routers</button>
+      <button id="flash-exec" class="btn">Execute Arbitrage</button>
+      <button id="flash-start" class="btn small">Start Auto</button>
+      <button id="flash-stop" class="btn small" disabled>Stop Auto</button>
+      <div id="flash-status" class="flash-status">Idle — set the receiver + routers, then Connect Routers.</div>
     </div>
   </section>
+  </div>
 
+  <div class="view" id="view-exchanges">
   <section class="panel real-panel">
     <div class="panel-head">
       <h2>Real trading</h2>
@@ -148,7 +221,62 @@
         USDT on the buy exchange · the base coin on the sell exchange. No profit is guaranteed.</div>
     </div>
   </section>
+  </div>
+
 </main>
+
+<!-- ============ FLOATING LIQUID GLASS NAVIGATION ============ -->
+<!-- ============ SEARCH OVERLAY (iOS Spotlight style) ============ -->
+<div id="search-overlay" class="search-overlay" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-label="Search">
+  <div id="search-backdrop" class="search-backdrop" aria-hidden="true"></div>
+  <div class="search-panel">
+    <div class="search-input-wrap">
+      <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.3-4.3"/></svg>
+      <input type="search" id="search-input" placeholder="Search Dashboard, Scanner, Flash Loan, Withdrawals, Profits, Exchanges, History, Settings..." autocomplete="off" spellcheck="false" autocorrect="off" autocapitalize="off" aria-label="Search sections and controls">
+      <button class="search-clear" id="search-clear" type="button" aria-label="Clear search" hidden>✕</button>
+    </div>
+    <div class="search-hint">Type to search sections, controls, and data</div>
+    <div id="search-recent" class="search-recent" role="region" aria-label="Recent searches"></div>
+    <div id="search-suggestions" class="search-suggestions" role="listbox" aria-label="Search suggestions"></div>
+    <div id="search-results" class="search-results" role="listbox" aria-label="Search results"></div>
+  </div>
+  <button class="search-close" id="search-close" type="button" aria-label="Close search">✕</button>
+</div>
+
+<nav id="glass-nav" aria-label="Sections">
+  <button class="nav-item active" data-view="dashboard" type="button">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="7" height="7" rx="1.8"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.8"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.8"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.8"/></svg>
+    <span>Dashboard</span>
+  </button>
+  <button class="nav-item" data-view="scanner" type="button">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="3.5"/><path d="M12 12l5.5-5.5"/></svg>
+    <span>Scanner</span>
+  </button>
+  <button class="nav-item" data-view="flash" type="button">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2.5L4.5 13.5h6L11 21.5l8.5-11h-6L13 2.5z"/></svg>
+    <span>Flash Loan</span>
+  </button>
+  <button class="nav-item" data-view="withdrawals" type="button">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 13.5V3"/><path d="M8 6.5L12 2.5l4 4"/><path d="M4 14.5v3a2.5 2.5 0 0 0 2.5 2.5h11a2.5 2.5 0 0 0 2.5-2.5v-3"/></svg>
+    <span>Withdrawals</span>
+  </button>
+  <button class="nav-item" data-view="exchanges" type="button">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h13l-3-3"/><path d="M20 17H7l3 3"/></svg>
+    <span>Exchanges</span>
+  </button>
+  <button class="nav-item" data-view="history" type="button">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>
+    <span>History</span>
+  </button>
+  <button class="nav-item" data-view="settings" type="button">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h10M18 8h2M4 16h4M12 16h8"/><circle cx="16" cy="8" r="2.2"/><circle cx="10" cy="16" r="2.2"/></svg>
+    <span>Settings</span>
+  </button>
+  <button class="nav-item nav-search-btn" id="nav-search-btn" type="button" title="Search pairs">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.3-4.3"/></svg>
+    <span class="visually-hidden">Search</span>
+  </button>
+</nav>
 
 <footer class="foot">
   SIM: simulated market · LIVE: real public prices from Binance, Kraken, Coinbase &amp; KuCoin.
@@ -164,7 +292,9 @@
 <script src="js/portfolio.js"></script>
 <script src="js/bot.js"></script>
 <script src="js/ui.js"></script>
+<script src="js/accounts.js"></script>
 <script src="js/ethers.min.js"></script>
+<script src="js/nav.js"></script>
 <script src="js/main.js"></script>
 </body>
 </html>

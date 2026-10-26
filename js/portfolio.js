@@ -1,4 +1,4 @@
-/* Paper-trading portfolio: balance, realized P&L, fees and trade history. */
+/* Paper-trading portfolio: balance, realized P&L, fees, withdrawals and equity history. */
 class Portfolio {
   constructor(start) {
     this.reset(start);
@@ -11,6 +11,35 @@ class Portfolio {
     this.fees = 0;
     this.trades = [];
     this.oppSeen = 0;
+    /* lifetime counters (trades array is capped, these are not) */
+    this.tradesTotal = 0;
+    this.winsTotal = 0;
+    this.lossesTotal = 0;
+    this.peakBalance = start;
+    /* withdrawals */
+    this.withdrawals = [];
+    this.totalWithdrawn = 0;
+    /* equity curve (balance snapshots over time) */
+    this.equity = [start];
+  }
+
+  /* Record a balance snapshot for the equity chart (call every few ticks). */
+  snapshot() {
+    this.equity.push(this.balance);
+    if (this.equity.length > 600) this.equity.shift();
+  }
+
+  /* Paper withdrawal: moves money out of the bot balance. */
+  withdraw(amount) {
+    amount = Math.floor(amount * 100) / 100;
+    if (!isFinite(amount) || amount <= 0) return { ok: false, error: "Enter a valid amount" };
+    if (amount > this.balance) return { ok: false, error: "Amount exceeds balance (" + this.balance.toFixed(2) + ")" };
+    this.balance -= amount;
+    this.totalWithdrawn += amount;
+    const w = { id: this.withdrawals.length + 1, time: new Date(), amount };
+    this.withdrawals.unshift(w);
+    if (this.withdrawals.length > 50) this.withdrawals.pop();
+    return { ok: true, w };
   }
 
   /* Execute an instant buy-on-A / sell-on-B round trip of `size` USDT.
@@ -29,9 +58,12 @@ class Portfolio {
     this.balance += pnl;
     this.realized += pnl;
     this.fees += buyFee + sellFee;
+    this.tradesTotal++;
+    if (pnl > 0) this.winsTotal++; else this.lossesTotal++;
+    if (this.balance > this.peakBalance) this.peakBalance = this.balance;
 
     const trade = {
-      id: this.trades.length + 1,
+      id: this.tradesTotal,
       time: new Date(),
       symbol: opp.symbol,
       buyEx: opp.buyEx.name,
@@ -52,6 +84,15 @@ class Portfolio {
     return (this.realized / this.starting) * 100;
   }
 
+  get netWorth() {
+    return this.balance + this.totalWithdrawn;
+  }
+
+  get lifetimeWinRate() {
+    return this.tradesTotal ? (this.winsTotal / this.tradesTotal) * 100 : null;
+  }
+
+  /* ---- windowed stats from the (capped) trades array ---- */
   get wins() {
     return this.trades.filter(t => t.pnl > 0).length;
   }

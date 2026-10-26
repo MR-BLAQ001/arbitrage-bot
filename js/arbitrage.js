@@ -1,10 +1,17 @@
 /* Arbitrage scanner: for each symbol find the cheapest exchange to buy
  * and the (different) richest exchange to sell, and compute the gross
  * and fee-adjusted (net) spread.
+ *
+ * @param {Object} market - Market instance
+ * @param {Object} cfg - CONFIG object
+ * @param {string|null} search - optional search term; only symbols matching
+ *        this (case-insensitive, on symbol id) are returned
  */
-function scanOpportunities(market, cfg) {
+function scanOpportunities(market, cfg, search = null) {
+  const term = (search || "").toLowerCase();
   const opps = [];
   for (const s of cfg.symbols) {
+    if (term && !s.id.toLowerCase().includes(term)) continue;
     const ranked = cfg.exchanges
       .map(e => ({ ex: e, cell: market.cells[s.id][e.id] }))
       .sort((a, b) => a.cell.price - b.cell.price);
@@ -43,4 +50,11 @@ function boardMarks(opps) {
     };
   }
   return marks;
+}
+
+/* Filter a list of symbols by search term (case-insensitive substring match). */
+function filterSymbols(symbols, search = null) {
+  const term = (search || "").toLowerCase();
+  if (!term) return symbols;
+  return symbols.filter(s => s.id.toLowerCase().includes(term));
 }

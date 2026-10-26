@@ -1,10 +1,10 @@
-/* Live market data feed: pulls REAL public ticker prices from four
+/* Live market data feed: pulls REAL public ticker prices from ten
  * exchanges (no API keys required). If a request fails (network, CORS,
  * rate limit) that exchange is flagged offline and the rest of the
  * dashboard keeps working on its last known prices.
  */
 const LiveFeed = (() => {
-  const TIMEOUT_MS = 7000;
+  const TIMEOUT_MS = 8000;
 
   const status = {}; // exId -> { ok, ts, error }
   let timer = null;
@@ -26,7 +26,10 @@ const LiveFeed = (() => {
     }
   }
 
-  /* Per-exchange fetchers. Each returns { "BTC/USDT": price, ... }. */
+  /* Per-exchange fetchers. Each returns { "BTC/USDT": price, ... }.
+   * Exchanges that support bulk ticker endpoints fetch everything once
+   * and filter locally; others request only the symbols we track.
+   */
   const fetchers = {
     async binance(ex) {
       const syms = Object.values(ex.live.symbols).map(s => `"${s}"`).join(",");
@@ -48,8 +51,6 @@ const LiveFeed = (() => {
       );
       if (data.error && data.error.length) throw new Error(data.error.join(", "));
       const out = {};
-      // Kraken returns canonical keys (XXBTZUSD, XETHZUSD, ...).
-      // Match each requested pair by base token + Z<quote> suffix.
       for (const [sym, pair] of Object.entries(ex.live.symbols)) {
         const [base, quote] = pair.split("/");
         const key = Object.keys(data.result).find(
@@ -64,10 +65,14 @@ const LiveFeed = (() => {
       const out = {};
       await Promise.all(
         Object.entries(ex.live.symbols).map(async ([sym, pair]) => {
-          const data = await getJSON(
-            "https://api.coinbase.com/v2/prices/" + pair + "/spot"
-          );
-          out[sym] = parseFloat(data.data.spot);
+          try {
+            const data = await getJSON(
+              "https://api.coinbase.com/v2/prices/" + pair + "/spot"
+            );
+            out[sym] = parseFloat(data.data.spot);
+          } catch (e) {
+            // Coinbase may not list some pairs; skip silently
+          }
         })
       );
       return out;
@@ -79,6 +84,98 @@ const LiveFeed = (() => {
       for (const [sym, exSym] of Object.entries(ex.live.symbols)) {
         const row = data.data.ticker.find(t => t.symbol === exSym);
         if (row) out[sym] = parseFloat(row.last);
+      }
+      return out;
+    },
+
+    async okx(ex) {
+      const data = await getJSON(
+        "https://www.okx.com/api/v5/market/tickers?instType=SPOT"
+      );
+      const out = {};
+      if (data.data) {
+        for (const [sym, exSym] of Object.entries(ex.live.symbols)) {
+          const row = data.data.find(t => t.instId === exSym);
+          if (row) out[sym] = parseFloat(row.last);
+        }
+      }
+      return out;
+    },
+
+    async bybit(ex) {
+      const data = await getJSON(
+        "https://api.bybit.com/v5/market/tickers?category=spot"
+      );
+      const out = {};
+      if (data.result && data.result.list) {
+        for (const [sym, exSym] of Object.entries(ex.live.symbols)) {
+          const row = data.result.list.find(t => t.symbol === exSym);
+          if (row) out[sym] = parseFloat(row.lastPrice);
+        }
+      }
+      return out;
+    },
+
+    async gateio(ex) {
+      const data = await getJSON("https://api.gateio.ws/api/v4/spot/tickers");
+      const out = {};
+      if (Array.isArray(data)) {
+        for (const [sym, exSym] of Object.entries(ex.live.symbols)) {
+          const row = data.find(t => t.currency_pair === exSym);
+          if (row) out[sym] = parseFloat(row.last);
+        }
+      }
+      return out;
+    },
+
+    async htx(ex) {
+      const data = await getJSON("https://api.huobi.pro/market/tickers");
+      const out = {};
+      if (data.data) {
+        for (const [sym, exSym] of Object.entries(ex.live.symbols)) {
+          const row = data.data.find(t => t.symbol === exSym);
+          if (row) out[sym] = parseFloat(row.close);
+        }
+      }
+      return out;
+    },
+
+    async bitget(ex) {
+      const data = await getJSON(
+        "https://api.bitget.com/api/v2/spot/market/tickers"
+      );
+      const out = {};
+      if (data.data) {
+        for (const [sym, exSym] of Object.entries(ex.live.symbols)) {
+          const row = data.data.find(t => t.symbol === exSym);
+          if (row) out[sym] = parseFloat(row.last);
+        }
+      }
+      return out;
+    },
+
+    async mexc(ex) {
+      const data = await getJSON("https://api.mexc.com/api/v3/ticker/price");
+      const out = {};
+      if (Array.isArray(data)) {
+        for (const [sym, exSym] of Object.entries(ex.live.symbols)) {
+          const row = data.find(t => t.symbol === exSym);
+          if (row) out[sym] = parseFloat(row.price);
+        }
+      }
+      return out;
+    },
+
+    async bingx(ex) {
+      const data = await getJSON(
+        "https://open-api.bingx.com/openApi/spot/v1/ticker/price"
+      );
+      const out = {};
+      if (data.data) {
+        for (const [sym, exSym] of Object.entries(ex.live.symbols)) {
+          const row = data.data.find(t => t.symbol === exSym);
+          if (row) out[sym] = parseFloat(row.price);
+        }
       }
       return out;
     },
